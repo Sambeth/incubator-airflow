@@ -16,13 +16,12 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-
+import warnings
 from tempfile import NamedTemporaryFile
 
-from airflow.contrib.hooks.gcs_hook import (GoogleCloudStorageHook,
-                                            _parse_gcs_url)
 from airflow.contrib.operators.s3_list_operator import S3ListOperator
 from airflow.exceptions import AirflowException
+from airflow.gcp.hooks.gcs import GoogleCloudStorageHook, _parse_gcs_url
 from airflow.hooks.S3_hook import S3Hook
 from airflow.utils.decorators import apply_defaults
 
@@ -41,18 +40,21 @@ class S3ToGoogleCloudStorageOperator(S3ListOperator):
     :type delimiter: str
     :param aws_conn_id: The source S3 connection
     :type aws_conn_id: str
-    :parame verify: Whether or not to verify SSL certificates for S3 connection.
+    :param verify: Whether or not to verify SSL certificates for S3 connection.
         By default SSL certificates are verified.
         You can provide the following values:
-        - False: do not validate SSL certificates. SSL will still be used
+
+        - ``False``: do not validate SSL certificates. SSL will still be used
                  (unless use_ssl is False), but SSL certificates will not be
                  verified.
-        - path/to/cert/bundle.pem: A filename of the CA cert bundle to uses.
+        - ``path/to/cert/bundle.pem``: A filename of the CA cert bundle to uses.
                  You can specify this argument if you want to use a different
                  CA cert bundle than the one used by botocore.
     :type verify: bool or str
-    :param dest_gcs_conn_id: The destination connection ID to use
-        when connecting to Google Cloud Storage.
+    :param gcp_conn_id: (Optional) The connection ID used to connect to Google Cloud Platform.
+    :type gcp_conn_id: str
+    :param dest_gcs_conn_id: (Deprecated) The connection ID used to connect to Google Cloud
+        Platform. This parameter has been deprecated. You should pass the gcp_conn_id parameter instead.
     :type dest_gcs_conn_id: str
     :param dest_gcs: The destination Google Cloud Storage bucket and prefix
         where you want to store the files. (templated)
@@ -64,6 +66,8 @@ class S3ToGoogleCloudStorageOperator(S3ListOperator):
     :param replace: Whether you want to replace existing destination files
         or not.
     :type replace: bool
+    :param gzip: Option to compress file for upload
+    :type gzip: bool
 
 
     **Example**:
@@ -77,6 +81,7 @@ class S3ToGoogleCloudStorageOperator(S3ListOperator):
             dest_gcs_conn_id='google_cloud_default',
             dest_gcs='gs://my.gcs.bucket/some/customers/',
             replace=False,
+            gzip=True,
             dag=my-dag)
 
     Note that ``bucket``, ``prefix``, ``delimiter`` and ``dest_gcs`` are
@@ -93,25 +98,35 @@ class S3ToGoogleCloudStorageOperator(S3ListOperator):
                  delimiter='',
                  aws_conn_id='aws_default',
                  verify=None,
+                 gcp_conn_id='google_cloud_default',
                  dest_gcs_conn_id=None,
                  dest_gcs=None,
                  delegate_to=None,
                  replace=False,
+                 gzip=False,
                  *args,
                  **kwargs):
 
-        super(S3ToGoogleCloudStorageOperator, self).__init__(
+        super().__init__(
             bucket=bucket,
             prefix=prefix,
             delimiter=delimiter,
             aws_conn_id=aws_conn_id,
             *args,
             **kwargs)
-        self.dest_gcs_conn_id = dest_gcs_conn_id
+
+        if dest_gcs_conn_id:
+            warnings.warn(
+                "The dest_gcs_conn_id parameter has been deprecated. You should pass "
+                "the gcp_conn_id parameter.", DeprecationWarning, stacklevel=3)
+            gcp_conn_id = dest_gcs_conn_id
+
+        self.gcp_conn_id = gcp_conn_id
         self.dest_gcs = dest_gcs
         self.delegate_to = delegate_to
         self.replace = replace
         self.verify = verify
+        self.gzip = gzip
 
         if dest_gcs and not self._gcs_object_is_directory(self.dest_gcs):
             self.log.info(
@@ -123,10 +138,10 @@ class S3ToGoogleCloudStorageOperator(S3ListOperator):
 
     def execute(self, context):
         # use the super method to list all the files in an S3 bucket/key
-        files = super(S3ToGoogleCloudStorageOperator, self).execute(context)
+        files = super().execute(context)
 
         gcs_hook = GoogleCloudStorageHook(
-            google_cloud_storage_conn_id=self.dest_gcs_conn_id,
+            google_cloud_storage_conn_id=self.gcp_conn_id,
             delegate_to=self.delegate_to)
 
         if not self.replace:
@@ -151,10 +166,11 @@ class S3ToGoogleCloudStorageOperator(S3ListOperator):
                     else:
                         existing_files.append(f)
 
-            files = set(files) - set(existing_files)
+            files = list(set(files) - set(existing_files))
             if len(files) > 0:
-                self.log.info('{0} files are going to be synced: {1}.'.format(
-                    len(files), files))
+                self.log.info(
+                    '%s files are going to be synced: %s.', len(files), files
+                )
             else:
                 self.log.info(
                     'There are no new files to sync. Have a nice day!')
@@ -184,7 +200,7 @@ class S3ToGoogleCloudStorageOperator(S3ListOperator):
                     #                             dest_gcs_bucket,
                     #                             dest_gcs_object))
 
-                    gcs_hook.upload(dest_gcs_bucket, dest_gcs_object, f.name)
+                    gcs_hook.upload(dest_gcs_bucket, dest_gcs_object, f.name, gzip=self.gzip)
 
             self.log.info(
                 "All done, uploaded %d files to Google Cloud Storage",
@@ -197,9 +213,9 @@ class S3ToGoogleCloudStorageOperator(S3ListOperator):
         return files
 
     # Following functionality may be better suited in
-    # airflow/contrib/hooks/gcs_hook.py
+    # airflow/contrib/hooks/gcs.py
     @staticmethod
     def _gcs_object_is_directory(object):
-        bucket, blob = _parse_gcs_url(object)
+        _, blob = _parse_gcs_url(object)
 
         return len(blob) == 0 or blob.endswith('/')

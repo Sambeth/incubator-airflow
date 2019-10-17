@@ -21,7 +21,7 @@
 import datetime
 import unittest
 
-from airflow import DAG, configuration
+from airflow import DAG
 from airflow.contrib.operators.sqoop_operator import SqoopOperator
 from airflow.exceptions import AirflowException
 
@@ -64,12 +64,12 @@ class TestSqoopOperator(unittest.TestCase):
         },
         'extra_export_options': {
             'update-key': 'id',
-            'update-mode': 'allowinsert'
+            'update-mode': 'allowinsert',
+            'fetch-size': 1
         }
     }
 
     def setUp(self):
-        configuration.load_test_config()
         args = {
             'owner': 'airflow',
             'start_date': datetime.datetime(2017, 1, 1)
@@ -111,7 +111,7 @@ class TestSqoopOperator(unittest.TestCase):
         self.assertEqual(self._config['extra_export_options'], operator.extra_export_options)
 
         # the following are meant to be more of examples
-        sqoop_import_op = SqoopOperator(
+        SqoopOperator(
             task_id='sqoop_import_using_table',
             cmd_type='import',
             conn_id='sqoop_default',
@@ -125,12 +125,13 @@ class TestSqoopOperator(unittest.TestCase):
             dag=self.dag
         )
 
-        sqoop_import_op_qry = SqoopOperator(
+        SqoopOperator(
             task_id='sqoop_import_using_query',
             cmd_type='import',
             conn_id='sqoop_default',
             query='select name, age from company where $CONDITIONS',
-            split_by='age', # the mappers will pass in values to the $CONDITIONS based on the field you select to split by
+            split_by='age',
+            # the mappers will pass in values to the $CONDITIONS based on the field you select to split by
             verbose=True,
             num_mappers=None,
             hcatalog_database='default',
@@ -140,7 +141,7 @@ class TestSqoopOperator(unittest.TestCase):
             dag=self.dag
         )
 
-        sqoop_import_op_with_partition = SqoopOperator(
+        SqoopOperator(
             task_id='sqoop_import_with_partition',
             cmd_type='import',
             conn_id='sqoop_default',
@@ -153,11 +154,13 @@ class TestSqoopOperator(unittest.TestCase):
             extra_import_options={
                 'hcatalog-storage-stanza': "\"stored as orcfile\"",
                 'hive-partition-key': 'day',
-                'hive-partition-value': '2017-10-18'},
+                'hive-partition-value': '2017-10-18',
+                'fetch-size': 1
+            },
             dag=self.dag
         )
 
-        sqoop_export_op_name = SqoopOperator(
+        SqoopOperator(
             task_id='sqoop_export_tablename',
             cmd_type='export',
             conn_id='sqoop_default',
@@ -170,7 +173,7 @@ class TestSqoopOperator(unittest.TestCase):
             dag=self.dag
         )
 
-        sqoop_export_op_path = SqoopOperator(
+        SqoopOperator(
             task_id='sqoop_export_tablepath',
             cmd_type='export',
             conn_id='sqoop_default',

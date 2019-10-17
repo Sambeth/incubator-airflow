@@ -17,38 +17,35 @@
 # specific language governing permissions and limitations
 # under the License.
 #
+"""
+This module contains integration with Azure File Share.
 
+Cloud variant of a SMB file share. Make sure that a Airflow connection of
+type `wasb` exists. Authorization can be done by supplying a login (=Storage account name)
+and password (=Storage account key), or login and SAS token in the extra field
+(see connection `wasb_default` for an example).
+"""
 
 import json
 import unittest
 
-from airflow import configuration
-from airflow import models
 from airflow.contrib.hooks.azure_fileshare_hook import AzureFileShareHook
+from airflow.models import Connection
 from airflow.utils import db
-
-
-try:
-    from unittest import mock
-except ImportError:
-    try:
-        import mock
-    except ImportError:
-        mock = None
+from tests.compat import mock
 
 
 class TestAzureFileshareHook(unittest.TestCase):
 
     def setUp(self):
-        configuration.load_test_config()
         db.merge_conn(
-            models.Connection(
+            Connection(
                 conn_id='wasb_test_key', conn_type='wasb',
                 login='login', password='key'
             )
         )
         db.merge_conn(
-            models.Connection(
+            Connection(
                 conn_id='wasb_test_sas_token', conn_type='wasb',
                 login='login', extra=json.dumps({'sas_token': 'token'})
             )

@@ -18,18 +18,16 @@
 # under the License.
 #
 
+import datetime
 import json
 import unittest
+from unittest import mock
 
-import mock
 import pandas as pd
 
-from airflow import configuration, DAG
-
-configuration.load_test_config()
-import datetime
-from airflow.contrib.hooks.aws_dynamodb_hook import AwsDynamoDBHook
 import airflow.contrib.operators.hive_to_dynamodb
+from airflow import DAG
+from airflow.contrib.hooks.aws_dynamodb_hook import AwsDynamoDBHook
 
 DEFAULT_DATE = datetime.datetime(2015, 1, 1)
 DEFAULT_DATE_ISO = DEFAULT_DATE.isoformat()
@@ -41,10 +39,9 @@ except ImportError:
     mock_dynamodb2 = None
 
 
-class HiveToDynamoDBTransferOperatorTest(unittest.TestCase):
+class TestHiveToDynamoDBTransferOperator(unittest.TestCase):
 
     def setUp(self):
-        configuration.load_test_config()
         args = {'owner': 'airflow', 'start_date': DEFAULT_DATE}
         dag = DAG('test_dag_id', default_args=args)
         self.dag = dag
@@ -66,10 +63,9 @@ class HiveToDynamoDBTransferOperatorTest(unittest.TestCase):
                 return_value=pd.DataFrame(data=[('1', 'sid')], columns=['id', 'name']))
     @unittest.skipIf(mock_dynamodb2 is None, 'mock_dynamodb2 package not present')
     @mock_dynamodb2
-    def test_get_records_with_schema(self, get_results_mock):
-
+    def test_get_records_with_schema(self, mock_get_pandas_df):
         # this table needs to be created in production
-        table = self.hook.get_conn().create_table(
+        self.hook.get_conn().create_table(
             TableName='test_airflow',
             KeySchema=[
                 {
@@ -107,10 +103,9 @@ class HiveToDynamoDBTransferOperatorTest(unittest.TestCase):
                 return_value=pd.DataFrame(data=[('1', 'sid'), ('1', 'gupta')], columns=['id', 'name']))
     @unittest.skipIf(mock_dynamodb2 is None, 'mock_dynamodb2 package not present')
     @mock_dynamodb2
-    def test_pre_process_records_with_schema(self, get_results_mock):
-
-         # this table needs to be created in production
-        table = self.hook.get_conn().create_table(
+    def test_pre_process_records_with_schema(self, mock_get_pandas_df):
+        # this table needs to be created in production
+        self.hook.get_conn().create_table(
             TableName='test_airflow',
             KeySchema=[
                 {
@@ -141,8 +136,7 @@ class HiveToDynamoDBTransferOperatorTest(unittest.TestCase):
         operator.execute(None)
 
         table = self.hook.get_conn().Table('test_airflow')
-        table.meta.client.get_waiter(
-            'table_exists').wait(TableName='test_airflow')
+        table.meta.client.get_waiter('table_exists').wait(TableName='test_airflow')
         self.assertEqual(table.item_count, 1)
 
 

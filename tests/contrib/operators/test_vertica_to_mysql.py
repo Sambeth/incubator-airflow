@@ -18,11 +18,10 @@
 # under the License.
 
 import datetime
-
-import mock
 import unittest
+from unittest import mock
 
-from airflow import DAG, configuration
+from airflow import DAG
 from airflow.contrib.operators.vertica_to_mysql import VerticaToMySqlTransfer
 
 
@@ -30,21 +29,20 @@ def mock_get_conn():
     commit_mock = mock.MagicMock(
     )
     cursor_mock = mock.MagicMock(
-        execute     = [],
-        fetchall    = [['1', '2', '3']],
-        description =  ['a', 'b', 'c'],
-        iterate     = [['1', '2', '3']],
+        execute=[],
+        fetchall=[['1', '2', '3']],
+        description=['a', 'b', 'c'],
+        iterate=[['1', '2', '3']],
     )
     conn_mock = mock.MagicMock(
-        commit      = commit_mock,
-        cursor      = cursor_mock,
+        commit=commit_mock,
+        cursor=cursor_mock,
     )
     return conn_mock
 
 
 class TestVerticaToMySqlTransfer(unittest.TestCase):
     def setUp(self):
-        configuration.load_test_config()
         args = {
             'owner': 'airflow',
             'start_date': datetime.datetime(2017, 1, 1)

@@ -17,35 +17,24 @@
 # specific language governing permissions and limitations
 # under the License.
 #
-
 import unittest
+
 import boto3
 
-from airflow import configuration
-from airflow.models import Connection
 from airflow.contrib.hooks.aws_hook import AwsHook
+from airflow.models import Connection
+from tests.compat import mock
 
 try:
-    from unittest import mock
-except ImportError:
-    try:
-        import mock
-    except ImportError:
-        mock = None
-
-try:
-    from moto import mock_emr, mock_dynamodb2, mock_sts
+    from moto import mock_emr, mock_dynamodb2, mock_sts, mock_iam
 except ImportError:
     mock_emr = None
     mock_dynamodb2 = None
     mock_sts = None
+    mock_iam = None
 
 
 class TestAwsHook(unittest.TestCase):
-    @mock_emr
-    def setUp(self):
-        configuration.load_test_config()
-
     @unittest.skipIf(mock_emr is None, 'mock_emr package not present')
     @mock_emr
     def test_get_client_type_returns_a_boto3_client_of_the_requested_type(self):
@@ -61,7 +50,6 @@ class TestAwsHook(unittest.TestCase):
     @unittest.skipIf(mock_dynamodb2 is None, 'mock_dynamo2 package not present')
     @mock_dynamodb2
     def test_get_resource_type_returns_a_boto3_resource_of_the_requested_type(self):
-
         hook = AwsHook(aws_conn_id='aws_default')
         resource_from_hook = hook.get_resource_type('dynamodb')
 
@@ -123,9 +111,24 @@ class TestAwsHook(unittest.TestCase):
         self.assertEqual(table.item_count, 0)
 
     @mock.patch.object(AwsHook, 'get_connection')
-    def test_get_credentials_from_login(self, mock_get_connection):
+    def test_get_credentials_from_login_with_token(self, mock_get_connection):
         mock_connection = Connection(login='aws_access_key_id',
-                                     password='aws_secret_access_key')
+                                     password='aws_secret_access_key',
+                                     extra='{"aws_session_token": "test_token"}'
+                                     )
+        mock_get_connection.return_value = mock_connection
+        hook = AwsHook()
+        credentials_from_hook = hook.get_credentials()
+        self.assertEqual(credentials_from_hook.access_key, 'aws_access_key_id')
+        self.assertEqual(credentials_from_hook.secret_key, 'aws_secret_access_key')
+        self.assertEqual(credentials_from_hook.token, 'test_token')
+
+    @mock.patch.object(AwsHook, 'get_connection')
+    def test_get_credentials_from_login_without_token(self, mock_get_connection):
+        mock_connection = Connection(login='aws_access_key_id',
+                                     password='aws_secret_access_key',
+                                     )
+
         mock_get_connection.return_value = mock_connection
         hook = AwsHook()
         credentials_from_hook = hook.get_credentials()
@@ -134,10 +137,24 @@ class TestAwsHook(unittest.TestCase):
         self.assertIsNone(credentials_from_hook.token)
 
     @mock.patch.object(AwsHook, 'get_connection')
-    def test_get_credentials_from_extra(self, mock_get_connection):
+    def test_get_credentials_from_extra_with_token(self, mock_get_connection):
         mock_connection = Connection(
             extra='{"aws_access_key_id": "aws_access_key_id",'
-            '"aws_secret_access_key": "aws_secret_access_key"}'
+                  '"aws_secret_access_key": "aws_secret_access_key",'
+                  ' "aws_session_token": "session_token"}'
+        )
+        mock_get_connection.return_value = mock_connection
+        hook = AwsHook()
+        credentials_from_hook = hook.get_credentials()
+        self.assertEqual(credentials_from_hook.access_key, 'aws_access_key_id')
+        self.assertEqual(credentials_from_hook.secret_key, 'aws_secret_access_key')
+        self.assertEquals(credentials_from_hook.token, 'session_token')
+
+    @mock.patch.object(AwsHook, 'get_connection')
+    def test_get_credentials_from_extra_without_token(self, mock_get_connection):
+        mock_connection = Connection(
+            extra='{"aws_access_key_id": "aws_access_key_id",'
+                  '"aws_secret_access_key": "aws_secret_access_key"}'
         )
         mock_get_connection.return_value = mock_connection
         hook = AwsHook()
@@ -145,6 +162,26 @@ class TestAwsHook(unittest.TestCase):
         self.assertEqual(credentials_from_hook.access_key, 'aws_access_key_id')
         self.assertEqual(credentials_from_hook.secret_key, 'aws_secret_access_key')
         self.assertIsNone(credentials_from_hook.token)
+
+    @mock.patch('airflow.contrib.hooks.aws_hook._parse_s3_config',
+                return_value=('aws_access_key_id', 'aws_secret_access_key'))
+    @mock.patch.object(AwsHook, 'get_connection')
+    def test_get_credentials_from_extra_with_s3_config_and_profile(
+        self, mock_get_connection, mock_parse_s3_config
+    ):
+        mock_connection = Connection(
+            extra='{"s3_config_format": "aws", '
+                  '"profile": "test", '
+                  '"s3_config_file": "aws-credentials", '
+                  '"region_name": "us-east-1"}')
+        mock_get_connection.return_value = mock_connection
+        hook = AwsHook()
+        hook._get_credentials(region_name=None)
+        mock_parse_s3_config.assert_called_once_with(
+            'aws-credentials',
+            'aws',
+            'test'
+        )
 
     @unittest.skipIf(mock_sts is None, 'mock_sts package not present')
     @mock.patch.object(AwsHook, 'get_connection')
@@ -182,6 +219,16 @@ class TestAwsHook(unittest.TestCase):
                          '3c/LTo6UDdyJwOOvEVPvLXCrrrUtdnniCEXAMPLE/IvU1dYUg2RVAJBanLiHb4I'
                          'gRmpRV3zrkuWJOgQs8IZZaIv2BXIa2R4OlgkBN9bkUDNCJiBeb/AXlzBBko7b15'
                          'fjrBs2+cTQtpZ3CYWFXG8C5zqx37wnOE49mRl/+OtkIKGO7fAE')
+
+    @unittest.skipIf(mock_iam is None, 'mock_iam package not present')
+    @mock_iam
+    def test_expand_role(self):
+        conn = boto3.client('iam', region_name='us-east-1')
+        conn.create_role(RoleName='test-role', AssumeRolePolicyDocument='some policy')
+        hook = AwsHook()
+        arn = hook.expand_role('test-role')
+        expect_arn = conn.get_role(RoleName='test-role').get('Role').get('Arn')
+        self.assertEqual(arn, expect_arn)
 
 
 if __name__ == '__main__':

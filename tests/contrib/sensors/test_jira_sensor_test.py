@@ -19,13 +19,11 @@
 #
 
 import unittest
+from unittest.mock import Mock, patch
 
-from mock import Mock
-from mock import patch
-
-from airflow import DAG, configuration
-from airflow import models
+from airflow import DAG
 from airflow.contrib.sensors.jira_sensor import JiraTicketSensor
+from airflow.models import Connection
 from airflow.utils import db, timezone
 
 DEFAULT_DATE = timezone.datetime(2017, 1, 1)
@@ -49,7 +47,6 @@ minimal_test_ticket = {
 
 class TestJiraSensor(unittest.TestCase):
     def setUp(self):
-        configuration.load_test_config()
         args = {
             'owner': 'airflow',
             'start_date': DEFAULT_DATE
@@ -57,7 +54,7 @@ class TestJiraSensor(unittest.TestCase):
         dag = DAG('test_dag_id', default_args=args)
         self.dag = dag
         db.merge_conn(
-            models.Connection(
+            Connection(
                 conn_id='jira_default', conn_type='jira',
                 host='https://localhost/jira/', port=443,
                 extra='{"verify": "False", "project": "AIRFLOW"}'))
@@ -67,13 +64,13 @@ class TestJiraSensor(unittest.TestCase):
     def test_issue_label_set(self, jira_mock):
         jira_mock.return_value.issue.return_value = minimal_test_ticket
 
-        ticket_label_sensor = JiraTicketSensor(task_id='search-ticket-test',
-                                               ticket_id='TEST-1226',
-                                               field_checker_func=
-                                               TestJiraSensor.field_checker_func,
-                                               timeout=518400,
-                                               poke_interval=10,
-                                               dag=self.dag)
+        ticket_label_sensor = JiraTicketSensor(
+            task_id='search-ticket-test',
+            ticket_id='TEST-1226',
+            field_checker_func=TestJiraSensor.field_checker_func,
+            timeout=518400,
+            poke_interval=10,
+            dag=self.dag)
 
         ticket_label_sensor.run(start_date=DEFAULT_DATE,
                                 end_date=DEFAULT_DATE, ignore_ti_state=True)
@@ -82,7 +79,7 @@ class TestJiraSensor(unittest.TestCase):
         self.assertTrue(jira_mock.return_value.issue.called)
 
     @staticmethod
-    def field_checker_func(context, issue):
+    def field_checker_func(context, issue):  # pylint: disable=unused-argument
         return "test-label-1" in issue['fields']['labels']
 
 

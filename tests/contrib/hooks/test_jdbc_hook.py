@@ -18,29 +18,27 @@
 # under the License.
 #
 
+import json
 import unittest
+from unittest.mock import Mock, patch
 
-from mock import Mock
-from mock import patch
-
-from airflow import configuration
 from airflow.hooks.jdbc_hook import JdbcHook
-from airflow import models
+from airflow.models import Connection
 from airflow.utils import db
 
 jdbc_conn_mock = Mock(
-        name="jdbc_conn"
+    name="jdbc_conn"
 )
 
 
 class TestJdbcHook(unittest.TestCase):
     def setUp(self):
-        configuration.load_test_config()
         db.merge_conn(
-                models.Connection(
-                        conn_id='jdbc_default', conn_type='jdbc',
-                        host='jdbc://localhost/', port=443,
-                        extra='{"extra__jdbc__drv_path": "/path1/test.jar,/path2/t.jar2", "extra__jdbc__drv_clsname": "com.driver.main"}'))
+            Connection(
+                conn_id='jdbc_default', conn_type='jdbc',
+                host='jdbc://localhost/', port=443,
+                extra=json.dumps({"extra__jdbc__drv_path": "/path1/test.jar,/path2/t.jar2",
+                                  "extra__jdbc__drv_clsname": "com.driver.main"})))
 
     @patch("airflow.hooks.jdbc_hook.jaydebeapi.connect", autospec=True,
            return_value=jdbc_conn_mock)
@@ -49,7 +47,7 @@ class TestJdbcHook(unittest.TestCase):
         jdbc_conn = jdbc_hook.get_conn()
         self.assertTrue(jdbc_mock.called)
         self.assertIsInstance(jdbc_conn, Mock)
-        self.assertEqual(jdbc_conn.name, jdbc_mock.return_value.name)
+        self.assertEqual(jdbc_conn.name, jdbc_mock.return_value.name)  # pylint: disable=no-member
 
 
 if __name__ == '__main__':

@@ -45,7 +45,7 @@ class QuboleSensor(BaseSensorOperator):
                                    "task '{0}' in dag '{1}'."
                                    .format(kwargs['task_id'], kwargs['dag'].dag_id))
 
-        super(QuboleSensor, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
     def poke(self, context):
 
@@ -74,7 +74,7 @@ class QuboleFileSensor(QuboleSensor):
     :param qubole_conn_id: Connection id which consists of qds auth_token
     :type qubole_conn_id: str
     :param data: a JSON object containing payload, whose presence needs to be checked
-        Check this `example <https://github.com/apache/incubator-airflow/blob/master\
+        Check this `example <https://github.com/apache/airflow/blob/master\
         /airflow/contrib/example_dags/example_qubole_sensor.py>`_ for sample payload
         structure.
     :type data: a JSON object
@@ -86,7 +86,7 @@ class QuboleFileSensor(QuboleSensor):
     @apply_defaults
     def __init__(self, *args, **kwargs):
         self.sensor_class = FileSensor
-        super(QuboleFileSensor, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
 
 class QubolePartitionSensor(QuboleSensor):
@@ -97,7 +97,7 @@ class QubolePartitionSensor(QuboleSensor):
     :param qubole_conn_id: Connection id which consists of qds auth_token
     :type qubole_conn_id: str
     :param data: a JSON object containing payload, whose presence needs to be checked.
-        Check this `example <https://github.com/apache/incubator-airflow/blob/master\
+        Check this `example <https://github.com/apache/airflow/blob/master\
         /airflow/contrib/example_dags/example_qubole_sensor.py>`_ for sample payload
         structure.
     :type data: a JSON object
@@ -109,4 +109,4 @@ class QubolePartitionSensor(QuboleSensor):
     @apply_defaults
     def __init__(self, *args, **kwargs):
         self.sensor_class = PartitionSensor
-        super(QubolePartitionSensor, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
